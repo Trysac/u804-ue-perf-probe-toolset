@@ -1,16 +1,15 @@
 # ue-perf-probe-toolset
 
-> Pure core and unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size. Python package `trysac-ue-perf-probe-toolset`, import name `ue_perf_probe_toolset`, MIT licensed,
-> Python >= 3.10, no runtime dependencies.
+> Pure core and Unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size. Python package trysac-ue-perf-probe-toolset, import name ue_perf_probe_toolset, MIT licensed, Python >= 3.10, no runtime dependencies.
 
 ## Docs
 
-- [README](README.md): problem, install, usage example
-- [AGENTS](AGENTS.md): commands, folder map, conventions, limits
-- [Architecture](docs/ARCHITECTURE.md): shape of the package and its public API
-- [Testing](docs/TESTING.md): how to run and extend the tests
+- [README](README.md): problem, install, usage example, public API, errors and limits
+- [Architecture](docs/ARCHITECTURE.md): shape of the package and the capture flow
+- [Testing](docs/TESTING.md): what exists and what has not been run
+- [Security](docs/SECURITY.md): threat model with defended and undefended cases
 
 ## Optional
 
+- [Project](docs/PROJECT.md): objective, scope and out-of-scope
 - [Stack](docs/STACK.md): tools used and discarded
-- [Changelog](CHANGELOG.md): release history

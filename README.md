@@ -4,12 +4,11 @@
 [![License: MIT](https://img.shields.io/pypi/l/trysac-ue-perf-probe-toolset)](LICENSE)
 [![CI](https://github.com/Trysac/u804-ue-perf-probe-toolset/actions/workflows/ci.yml/badge.svg)](https://github.com/Trysac/u804-ue-perf-probe-toolset/actions/workflows/ci.yml)
 
-Pure core and unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size.
+Pure core and Unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size.
 
 ## Problem
 
-Describe in two or three sentences the concrete problem this utility solves, who hits it, and what
-they do today without it. Replace this paragraph when the first real feature lands.
+Agents optimizing an Unreal Engine 5.8 game need repeatable performance measurements with a clear PASS/FAIL against a budget and a comparison with the previous run. Reading CSV Profiler output and `stat unit` by hand is slow and inconsistent. This package parses CSV Profiler captures, computes frame statistics, evaluates budgets, compares two captures with a seeded bootstrap and reports build size.
 
 ## Install
 
@@ -19,29 +18,60 @@ pip install trysac-ue-perf-probe-toolset
 uv add trysac-ue-perf-probe-toolset
 ```
 
-Requires Python 3.10 or newer. No runtime dependencies.
+Import name: `ue_perf_probe_toolset`. Requires Python 3.10 or newer. No runtime dependencies: the runtime uses the standard library only.
 
 ## Usage
 
 ```python
-import ue_perf_probe_toolset
+from ue_perf_probe_toolset import PerfBudget, evaluate_budget, frame_stats, parse_csv_text
 
-# normalize() trims surrounding whitespace and lower-cases the text.
-print(ue_perf_probe_toolset.normalize("  Hello World "))  # -> "hello world"
-
-# Blank input is rejected explicitly instead of returning an empty string.
-try:
-    ue_perf_probe_toolset.normalize("   ")
-except ValueError as exc:
-    print(f"rejected: {exc}")
+csv_text = "FrameTime\n10\n10\n60\n"
+stats = frame_stats([f.frame_ms for f in parse_csv_text(csv_text).frames])
+result = evaluate_budget(stats, PerfBudget(target_fps=60, max_hitches_per_min=2))
+print(result.verdict, result.reasons)
 ```
+
+Inside the Unreal editor Python environment, the adapter functions take the `unreal` module as their first argument, for example `start_capture(unreal, 30)`.
+
+## Public API
+
+Core (pure, never imports `unreal`):
+
+- `parse_csv_profile(path)` returns `ParsedProfile`. Raises `PerfError` with `csv_not_found`, `csv_unreadable` or `limit_exceeded`.
+- `parse_csv_text(text)` accepts `str` or UTF-8 `bytes` and returns `ParsedProfile`. Problems such as missing, extra or duplicate columns, truncated rows and bad numbers become `ParseWarning` entries and never abort parsing.
+- `frame_stats(...)` returns `FrameStats`. Raises `no_frames` for an empty input and `invalid_argument` for bad values. `fps_p1_low` and `fps_p5_low` are derived from the 99th and 95th percentile frame time.
+- `PerfBudget(target_fps, min_fps, max_hitches_per_min, max_frame_ms_p95, max_frame_ms_p99)`. `None` disables a limit. `min_fps` is compared with `fps_p1_low`. `PerfBudget.from_mapping` rejects unknown keys.
+- `evaluate_budget(stats, budget)` returns `BudgetResult` with `verdict` (`PASS` or `FAIL`), `checks` and `reasons`.
+
+Adapter (each function takes `ue` first and never imports `unreal`):
+
+- `start_capture(ue, duration_seconds=30.0, *, store=None)` runs `csvprofile start` and returns a `CaptureJob` at once. The stop is scheduled by a Slate post-tick callback. Raises `invalid_argument` (duration outside 1 to 3600 seconds) and `capture_in_progress`.
+- `capture_status(ue, job_id)` returns the job state `running`, `finalizing` or `completed`. Raises `unknown_job`.
+- `get_report(ue, job_id=None, csv_path=None, *, budget=None, warmup_seconds=0.0, hitch_threshold_ms=..., store=None)` returns `PerfReport`.
+- `perf_report_md(...)` returns the same report rendered as Markdown.
+- `compare_reports(ue, baseline_csv, candidate_csv, *, seed=1234, iterations=500, warmup_seconds=0.0)` returns `ComparisonResult`. The same seed gives the same result.
+- `build_size_report(ue, build_dir, *, limit_bytes=None, cook_log=None)` returns a read-only `SizeReport`. Its `estimated_zip_bytes` is an estimate from fixed per-extension ratios, not a measured archive size.
+- `to_dict(result)` converts any result dataclass to plain values.
+- `JobStore(max_entries=64)` holds capture jobs in memory and evicts the oldest one beyond the limit.
+
+Errors: `PerfError` has a `code` from `ERROR_CODES`: `invalid_argument`, `path_not_allowed`, `path_not_found`, `csv_not_found`, `csv_unreadable`, `unknown_job`, `capture_in_progress`, `capture_failed`, `no_frames`, `limit_exceeded`.
+
+Limits and options:
+
+- Capture duration is 1 to 3600 seconds. At most 64 jobs are kept by default.
+- CSV files are read only below `Saved/Profiling/CSV`. Build folders and cook logs are read only below the project directory.
+- The render profile name is read from `Saved/RenderProfiles/active_profile.json` when that file exists and is at most 65536 bytes. The name is cut to 100 characters. A missing or invalid file is ignored.
+- Error messages are cut to 200 characters.
+- Size reports warn above 90 percent of `limit_bytes` and again when the limit is exceeded.
+- Size and row limits for CSV parsing are constants in `core/csvparse.py`.
+
+Security limits are described in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md) and [decisions](docs/decisions/)
-- [Testing](docs/TESTING.md) and [security](docs/SECURITY.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Testing](docs/TESTING.md) and [security notes](docs/SECURITY.md)
 - [Project record](docs/PROJECT.md) and [stack](docs/STACK.md)
-- [Changelog](CHANGELOG.md) and [contributing guide](CONTRIBUTING.md)
 
 ## License
 
