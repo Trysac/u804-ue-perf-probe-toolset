@@ -93,9 +93,9 @@ def _report(
     )
 
 
-def start_capture(ue: Any, duration_seconds: float = 30.0) -> str:
+def start_capture(ue: Any, duration_seconds: float = 30.0, label: str = "") -> str:
     """Start a CSV Profiler capture; returns at once with ``job_id`` (never blocks)."""
-    return _run(lambda: adapter.start_capture(ue, duration_seconds))
+    return _run(lambda: adapter.start_capture(ue, duration_seconds, label=label))
 
 
 def capture_status(ue: Any, job_id: str) -> str:

@@ -64,14 +64,16 @@ Core (pure, never imports `unreal`):
 - `frame_stats(...)` returns `FrameStats`. Raises `no_frames` for an empty input and `invalid_argument` for bad values. `fps_p1_low` and `fps_p5_low` are derived from the 99th and 95th percentile frame time.
 - `PerfBudget(target_fps, min_fps, max_hitches_per_min, max_frame_ms_p95, max_frame_ms_p99)`. `None` disables a limit. `min_fps` is compared with `fps_p1_low`. `PerfBudget.from_mapping` rejects unknown keys.
 - `evaluate_budget(stats, budget)` returns `BudgetResult` with `verdict` (`PASS` or `FAIL`), `checks` and `reasons`.
+- `channel_stats(frames, warmup_seconds=0.0)` returns `(tuple[ChannelStats], notes)`: mean, p50, p95 and p99 of `game_ms`, `render_ms` (draw), `gpu_ms`, `physical_mb` and `streaming_pool_mb` for the columns present; absent ones are named in `notes`.
+- `compare_profiles(baseline, candidate, *, seed=1234, iterations=500)` compares frame times and every shared column with the same seeded bootstrap; the verdict counts time metrics only.
 
 Adapter (each function takes `ue` first and never imports `unreal`):
 
-- `start_capture(ue, duration_seconds=30.0, *, store=None)` runs `csvprofile start` and returns a `CaptureJob` at once. The stop is scheduled by a Slate post-tick callback. Raises `invalid_argument` (duration outside 1 to 3600 seconds) and `capture_in_progress`.
+- `start_capture(ue, duration_seconds=30.0, *, label="", store=None)` runs `csvprofile start` and returns a `CaptureJob` at once. The stop is scheduled by a Slate post-tick callback. Raises `invalid_argument` (duration outside 1 to 3600 seconds, label not a string) and `capture_in_progress`. The label goes through `sanitize_label` (at most 64 safe characters) and is shown in reports.
 - `capture_status(ue, job_id)` returns the job state `running`, `finalizing` or `completed`. Raises `unknown_job`.
-- `get_report(ue, job_id=None, csv_path=None, *, budget=None, warmup_seconds=0.0, hitch_threshold_ms=..., store=None)` returns `PerfReport`.
+- `get_report(ue, job_id=None, csv_path=None, *, budget=None, warmup_seconds=0.0, hitch_threshold_ms=..., store=None)` returns `PerfReport` with frame `stats`, `channels`, `notes`, `label` and the budget verdict.
 - `perf_report_md(...)` returns the same report rendered as Markdown.
-- `compare_reports(ue, baseline_csv, candidate_csv, *, seed=1234, iterations=500, warmup_seconds=0.0)` returns `ComparisonResult`. The same seed gives the same result.
+- `compare_reports(ue, baseline_csv, candidate_csv, *, seed=1234, iterations=500, warmup_seconds=0.0)` returns `ComparisonResult` covering frame time and every shared column. The same seed gives the same result.
 - `build_size_report(ue, build_dir, *, limit_bytes=None, cook_log=None)` returns a read-only `SizeReport`. Its `estimated_zip_bytes` is an estimate from fixed per-extension ratios, not a measured archive size.
 - `to_dict(result)` converts any result dataclass to plain values.
 - `JobStore(max_entries=64)` holds capture jobs in memory and evicts the oldest one beyond the limit.

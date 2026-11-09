@@ -25,13 +25,18 @@ inside Unreal (see [TESTING.md](TESTING.md)).
 ## start_capture
 
 ```json
-{"toolset": "PerfProbeTools", "tool": "start_capture", "arguments": {"duration_seconds": 30}}
+{"toolset": "PerfProbeTools", "tool": "start_capture", "arguments": {"duration_seconds": 30, "label": "before LOD fix"}}
 ```
 
 ```json
-{"summary": "capture capture-0001 started", "job_id": "capture-0001", "state": "running",
- "duration_seconds": 30.0, "csv_name": null}
+{"summary": "capture capture-0001 (before LOD fix) started", "job_id": "capture-0001",
+ "state": "running", "duration_seconds": 30.0, "csv_name": null, "label": "before LOD fix"}
 ```
+
+`label` is optional. It is kept with the job and shown in `capture_status`, `get_report`,
+`perf_report_md` and the notes of `compare_reports` (also when the report is asked by `csv_path`,
+as long as the job is still known). It is cut to 64 characters; characters other than letters,
+digits, space and `_ . : # ( ) / -` become `_`. It is never sent to the console.
 
 Only one capture runs at a time; a second call returns `capture_in_progress`. The tool runs
 `csvprofile start`; an editor tick callback runs `csvprofile stop` when the time is up.
@@ -43,8 +48,9 @@ Only one capture runs at a time; a second call returns `capture_in_progress`. Th
 ```
 
 ```json
-{"summary": "capture capture-0001 is completed", "job_id": "capture-0001", "state": "completed",
- "duration_seconds": 30.0, "csv_name": "Profile(20261112_101500).csv"}
+{"summary": "capture capture-0001 (before LOD fix) is completed", "job_id": "capture-0001",
+ "state": "completed", "duration_seconds": 30.0, "csv_name": "Profile(20261112_101500).csv",
+ "label": "before LOD fix"}
 ```
 
 `finalizing` means the capture was stopped but its CSV is not visible yet. Jobs are kept in memory
@@ -64,8 +70,18 @@ the CSV files remain in `Saved/Profiling/CSV/`: pass `csv_path` to the report to
  "source": "Profile(20261112_101500).csv",
  "stats": {"fps_mean": 58.3, "fps_p1_low": 41.5, "frame_ms_p95": 19.2, "hitches_per_min": 6.2, "...": "..."},
  "budget_result": {"verdict": "FAIL", "reasons": ["target_fps: fps_mean 58.30 is not >= 60", "..."], "...": "..."},
- "warnings": [], "render_profile": null}
+ "warnings": [], "render_profile": null,
+ "channels": [{"channel": "game_ms", "unit": "ms", "count": 1740, "mean": 10.5, "p50": 10.2, "p95": 11.7, "p99": 13.9},
+              {"channel": "render_ms", "unit": "ms", "...": "..."}, {"channel": "gpu_ms", "unit": "ms", "...": "..."},
+              {"channel": "physical_mb", "unit": "MB", "...": "..."}],
+ "notes": ["streaming_pool_mb (texture streaming pool): no column or no values in the capture; omitted"],
+ "label": "before LOD fix"}
 ```
+
+`channels` gives mean, p50, p95 and p99 of the game thread time (`game_ms`), render thread or
+draw time (`render_ms`), GPU time (`gpu_ms`), physical memory used (`physical_mb`) and texture
+streaming pool (`streaming_pool_mb`) for the columns the capture has, after warmup. A missing
+column is left out and named in `notes`. Columns are matched by name pattern, not position.
 
 Choose the CSV with `csv_path` (a name or path inside `Saved/Profiling/CSV/`), else `job_id`, else
 the newest CSV. Budget parameters are flat: `target_fps` (checked against `fps_mean`) and `min_fps`
@@ -85,12 +101,20 @@ value (the default) so that `0` means "no hitches allowed". With no limit set, `
 {"summary": "regression: 2 regressions, 0 improvements (500 bootstrap iterations, seed 1234)",
  "verdict": "regression",
  "metrics": [{"metric": "frame_ms_p95", "baseline": 16.9, "candidate": 19.2, "delta": 2.3,
-              "delta_pct": 13.6, "ci_low": 1.1, "ci_high": 3.4, "direction": "regression"}, "..."]}
+              "delta_pct": 13.6, "ci_low": 1.1, "ci_high": 3.4, "direction": "regression"},
+             {"metric": "gpu_ms_p95", "...": "..."}, {"metric": "physical_mb_mean", "...": "..."}],
+ "notes": ["streaming_pool_mb: not present in both captures; not compared", "candidate label: after LOD fix"]}
 ```
+
+Metrics are `<column>_mean`, `_p50`, `_p95` and `_p99` for `frame_ms` and every column present in
+both captures, each with the same seeded bootstrap. Higher is worse for every metric. The verdict
+counts frame, game, render and GPU time metrics only; memory metrics are informational.
 
 ## perf_report_md
 
 Same parameters as `get_report`. Returns `{"summary": ..., "markdown": "| metric | value | budget | verdict |\n..."}`.
+The Markdown has the frame table, the verdict, a list with source, label, notes and warnings, and a
+second table `| channel | unit | mean | p50 | p95 | p99 |` when the capture has those columns.
 
 ## build_size_report
 

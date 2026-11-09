@@ -34,9 +34,9 @@ def test_capture_flow_across_separate_calls(fake_ue, write_csv, monkeypatch):
         raise AssertionError("sleep must not be called")
 
     monkeypatch.setattr(time, "sleep", boom)
-    started = _load(mcp.start_capture(fake_ue, 5))
+    started = _load(mcp.start_capture(fake_ue, 5, label="baseline"))
     job_id = started["job_id"]
-    assert started["state"] == "running"
+    assert (started["state"], started["label"]) == ("running", "baseline")
     assert fake_ue.commands == ["csvprofile start"]
     assert _load(mcp.capture_status(fake_ue, job_id))["state"] == "running"
     fake_ue.tick(6.0)
@@ -48,6 +48,10 @@ def test_capture_flow_across_separate_calls(fake_ue, write_csv, monkeypatch):
     report = _load(mcp.get_report(fake_ue, job_id=job_id, target_fps=60, warmup_seconds=1))
     assert report["budget_result"]["verdict"] == "PASS"
     assert report["stats"]["excluded_frames"] == 100
+    assert report["label"] == "baseline"
+    assert [c["channel"] for c in report["channels"]] == ["game_ms", "render_ms", "gpu_ms"]
+    md = _load(mcp.perf_report_md(fake_ue, job_id=job_id))["markdown"]
+    assert "- label: baseline" in md and "| game_ms | ms |" in md
 
 
 def test_only_one_capture_at_a_time(fake_ue):

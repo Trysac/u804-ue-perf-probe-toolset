@@ -78,6 +78,15 @@ def main() -> None:
             )
             step("perf_report_md", lambda: mcp.perf_report_md(unreal, job_id=job_id))
             step(
+                "channels found",
+                lambda: {
+                    "channels": [
+                        c["channel"]
+                        for c in json.loads(mcp.get_report(unreal, job_id=job_id))["channels"]
+                    ]
+                },
+            )
+            step(
                 "compare_reports (same csv)",
                 lambda: mcp.compare_reports(
                     unreal, status["csv_name"], status["csv_name"], iterations=50
@@ -105,7 +114,7 @@ def main() -> None:
         },
     )
     step("build_size_report (Config)", lambda: mcp.build_size_report(unreal, "Config"))
-    started = step("start_capture", lambda: mcp.start_capture(unreal, CAPTURE_SECONDS))
+    started = step("start_capture", lambda: mcp.start_capture(unreal, CAPTURE_SECONDS, "smoke"))
     step("second capture refused", lambda: _expect_error(mcp.start_capture(unreal, 5)))
     if started and "job_id" in started:
         state["job_id"] = started["job_id"]

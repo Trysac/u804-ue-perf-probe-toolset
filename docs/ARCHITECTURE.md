@@ -20,7 +20,7 @@ AI agent --MCP--> Unreal MCP server --> Toolset Registry
    core/  pure functions, no unreal import        errors.py  PerfError with a stable code
 ```
 
-- **core/** contains `csvparse` (CSV parsing with column mapping by regular expression), `stats` (frame statistics and percentiles), `budget` (`PerfBudget` and `evaluate_budget`), `compare` (seeded bootstrap comparison), `sizes` (build size walk and cook log reading), `report` (`PerfReport` assembly) and `markdown` (Markdown rendering). Its `__init__.py` says that the submodules must be imported directly.
+- **core/** contains `csvparse` (CSV parsing with column mapping by regular expression), `stats` (frame statistics and percentiles), `budget` (`PerfBudget` and `evaluate_budget`), `channels` (game/render/GPU/memory column statistics), `compare` (seeded bootstrap comparison), `sizes` (build size walk and cook log reading), `report` (`PerfReport` assembly) and `markdown` (Markdown rendering). Its `__init__.py` says that the submodules must be imported directly.
 - **adapter.py** contains `start_capture`, `capture_status`, `get_report`, `compare_reports`, `build_size_report`, `perf_report_md` and `to_dict`, plus `JobStore`. Every adapter function receives `ue` as its first argument and never imports `unreal`. Tests can pass a fake module.
 - **Public API** is the list in `__all__` of `src/ue_perf_probe_toolset/__init__.py`. The package root exports the adapter version of `build_size_report`. The core version is reachable only through `core.sizes`.
 

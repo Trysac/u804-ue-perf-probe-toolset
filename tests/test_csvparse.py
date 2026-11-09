@@ -206,3 +206,26 @@ def test_structured_rows_never_raise(rows):
     text = HEADER + "\n".join(",".join(row) for row in rows)
     profile = parse_csv_text(text)
     assert all(math.isfinite(frame.frame_ms) and frame.frame_ms > 0 for frame in profile.frames)
+
+
+def test_memory_columns_are_parsed_without_missing_warnings():
+    text = "FrameTime,GameThreadTime,RenderThreadTime,GPUTime,Physical Used MB,TexturePool\n10,1,2,3,3000,800\n"
+    profile = parse_csv_text(text)
+    assert profile.warnings == ()
+    frame = profile.frames[0]
+    assert (frame.physical_mb, frame.streaming_pool_mb) == (3000.0, 800.0)
+    assert parse_csv_text(HEADER + "10,1,2,3\n").frames[0].physical_mb is None
+
+
+def test_repeated_header_row_is_skipped():
+    profile = parse_csv_text(HEADER + "10,1,2,3\n" + HEADER + "[HasHeaderRowAtEnd],1\n")
+    assert profile.warnings == ()
+    assert len(profile.frames) == 1
+
+
+def test_many_extra_columns_give_a_single_warning():
+    names = ",".join(f"Extra{index}" for index in range(12))
+    profile = parse_csv_text(f"FrameTime,{names}\n10" + ",0" * 12 + "\n")
+    extra = [w for w in profile.warnings if w.code == "extra_column"]
+    assert len(extra) == 1
+    assert "'Extra0'" in extra[0].message and "and 2 more" in extra[0].message

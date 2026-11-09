@@ -25,18 +25,20 @@ class PerfProbeTools(unreal.ToolsetDefinition):
 
     @staticmethod
     @toolset_registry.tool_call
-    def start_capture(duration_seconds: float = 30.0) -> str:
+    def start_capture(duration_seconds: float = 30.0, label: str = "") -> str:
         """Start a CSV Profiler capture that stops by itself after duration_seconds.
 
         Returns at once; poll capture_status with the job_id. Only one capture runs at a time.
 
         Args:
             duration_seconds: Capture length in seconds (1 to 3600).
+            label: Short name for this capture (for example "before LOD fix"), shown in its
+                reports; at most 64 characters, unusual characters become "_".
 
         Returns:
-            JSON with summary, job_id, state ("running") and duration_seconds.
+            JSON with summary, job_id, state ("running"), duration_seconds and label.
         """
-        return mcp.start_capture(unreal, duration_seconds)
+        return mcp.start_capture(unreal, duration_seconds, label)
 
     @staticmethod
     @toolset_registry.tool_call
@@ -77,7 +79,9 @@ class PerfProbeTools(unreal.ToolsetDefinition):
             warmup_seconds: Seconds at the start excluded (shader compilation spikes).
 
         Returns:
-            JSON with summary, source, stats, budget_result (verdict, reasons) and warnings.
+            JSON with summary, source, label, stats, budget_result (verdict, reasons), channels
+            (mean/p50/p95/p99 of game, render (draw) and GPU time, physical memory and texture
+            streaming pool when the capture has them), notes and warnings.
         """
         return mcp.get_report(
             unreal,
@@ -109,8 +113,9 @@ class PerfProbeTools(unreal.ToolsetDefinition):
             warmup_seconds: Seconds at the start of each capture excluded.
 
         Returns:
-            JSON with summary, verdict ("regression", "improvement" or "unchanged") and metrics
-            (delta, delta_pct, ci_low, ci_high, direction).
+            JSON with summary, verdict ("regression", "improvement" or "unchanged", from the time
+            metrics), metrics for frame, game, render, GPU and memory columns present in both
+            (delta, delta_pct, ci_low, ci_high, direction) and notes.
         """
         return mcp.compare_reports(
             unreal, baseline_csv, candidate_csv, seed, iterations, warmup_seconds

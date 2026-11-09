@@ -23,15 +23,25 @@ uv run python tools/build_plugin.py          # build the Unreal plugin zip into 
 | `tests/test_csvparse.py` | Parser: columns mapped by pattern, missing/extra/duplicate columns, truncated and malformed rows, limits; Hypothesis: only `PerfError` is ever raised. |
 | `tests/test_stats.py` | Frame statistics, percentiles, warmup, hitches; Hypothesis: matches a naive reference. |
 | `tests/test_budget.py`, `tests/test_compare.py` | Budget verdicts; seeded bootstrap is reproducible. |
+| `tests/test_channels.py` | Game/render (draw)/GPU/memory/streaming column statistics with and without those columns (omitted with a note), Hypothesis: matches a naive reference; per-column comparison with the same seed (memory does not decide the verdict); Markdown channel table and label; the synthetic UE 5.8-shaped fixture parses. |
 | `tests/test_sizes.py`, `tests/test_markdown.py` | Build size sums exact bytes, warnings, cook log; Markdown against `tests/golden/perf.md`. |
-| `tests/test_adapter.py` | Adapter against `tests/fakes/unreal.py`: `csvprofile start/stop`, stop scheduled by a tick callback, job states, one capture at a time, path confinement. |
+| `tests/test_adapter.py` | Adapter against `tests/fakes/unreal.py`: `csvprofile start/stop`, stop scheduled by a tick callback, job states, one capture at a time, path confinement, capture label sanitized and carried into reports and comparison notes. |
 | `tests/test_mcp.py` | MCP layer: a capture followed across separate calls, flat budget parameters, errors returned as data (`capture_in_progress`, `capture_failed`, `unreal_error`...), report by `csv_path` after the job store is lost, 1 GiB default size limit. |
 | `tests/test_plugin_shell.py` | Loads `plugin/.../Content/Python/perf_probe_toolset_mcp.py` with a fake `unreal` and a fake `toolset_registry`: every MCP function is a documented `tool_call` static method with primitive parameters returning `str`, defaults match the MCP layer, and each forwards correctly. |
 | `tests/test_build_plugin.py` | The plugin zip contains the `.uplugin`, the toolset module and the vendored package; the `.uplugin` depends on `PythonScriptPlugin` and `ToolsetRegistry` and its version matches the package. |
 | `tests/test_errors.py`, `tests/test_ue_perf_probe_toolset.py` | Error type, version and exports. |
 
-The CSV files in `tests/data/` are synthetic, written by hand. No real editor capture is committed
-yet (see step 8 below).
+The CSV files in `tests/data/` are synthetic. `capture_ok.csv` and `capture_shuffled.csv` are
+written by hand. `synthetic_ue58_capture.csv` is generated (fixed seed) to look like a UE 5.8 CSV
+Profiler export: typical columns (`EventCount`, `FrameTime`, `GameThreadTime`, `RenderThreadTime`,
+`RHIThreadTime`, `GPUTime`, `PhysicalUsedMB`, `TextureStreaming/StreamingPool`, ...), an `events`
+column, shader-compile spikes in the first frames, one hitch, the header repeated at the end and a
+`[HasHeaderRowAtEnd]` metadata trailer with anonymized values. Its column names and layout are
+assumptions from the documentation, not taken from a real file.
+
+**A REAL capture is still missing.** After running the in-editor check (step 8 below), an
+anonymized real UE 5.8 CSV must be added to `tests/data/` with a parsing test; until then no test
+proves that the parser reads a real export.
 
 ## Assumptions to confirm in Unreal Engine 5.8
 
@@ -50,8 +60,11 @@ are the points the in-editor check must confirm:
   note which names UE 5.8 really writes, and whether GPU timing needs `-csvGpuStats`). Rows that
   start with `[` (metadata) are skipped; a header repeated at the end of the file only produces
   `bad_value` warnings.
-- Memory and streaming columns (for example physical memory used and texture pool size) are not
-  parsed yet: record their exact names in a real capture so a later version can add them.
+- Memory and streaming columns are matched as `PhysicalUsedMB` (pattern
+  `(memory)physicalused(mb)`) and `TextureStreaming/StreamingPool` (pattern
+  `(texturestreaming)(streamingpool|texturepool)(mb)`). Record the exact names UE 5.8 writes (they
+  may need `-csvStats`/categories enabled) and adjust `COLUMN_PATTERNS` in `core/csvparse.py`.
+- The trailer: a repeated header row and a metadata row starting with `[HasHeaderRowAtEnd]`.
 
 ## In-editor check (manual, Unreal Engine 5.8)
 
@@ -77,12 +90,12 @@ plugin as verified in Unreal without running them.
    `perf_report_md`. Check every assumption listed above against the produced CSV.
 7. Acceptance against `stat unit`: during the same 30 s run `stat unit` on screen and note its
    Frame, Game, Draw and GPU values by hand; the report's mean frame time must be within 1 % of the
-   noted Frame value. Run `build_size_report` on a packaged build and compare `total_bytes` with the
+   noted Frame value, and the `game_ms`, `render_ms` and `gpu_ms` means must match Game, Draw and GPU. Run `build_size_report` on a packaged build and compare `total_bytes` with the
    folder size reported by the operating system (it must match exactly).
 8. Copy one anonymized real capture into `tests/data/` with a test. Record the date, engine
    version, smoke result and the `stat unit` comparison in `docs/PROJECT.md`.
 
 ## Not covered
 
-Unreal Insights traces, per draw call analysis, memory and streaming columns, and behavior on engine
-versions other than 5.8.
+Unreal Insights traces, per draw call analysis, memory columns other than physical memory used and
+the texture streaming pool, and behavior on engine versions other than 5.8.
