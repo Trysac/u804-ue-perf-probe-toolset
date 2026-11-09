@@ -1,0 +1,20 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.2.0",
+	"FriendlyName": "Perf Probe Toolset (Unreal MCP)",
+	"Description": "Unreal MCP toolset: record CSV Profiler captures without blocking the editor, report frame statistics against a budget, compare captures and report build size. Python only, no compilation.",
+	"Category": "Editor",
+	"CreatedBy": "Miguel Gomez (Trysac)",
+	"CreatedByURL": "https://github.com/Trysac/u804-ue-perf-probe-toolset",
+	"DocsURL": "https://github.com/Trysac/u804-ue-perf-probe-toolset#readme",
+	"EngineVersion": "5.8.0",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Plugins": [
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "ToolsetRegistry", "Enabled": true }
+	]
+}
