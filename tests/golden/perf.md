@@ -17,3 +17,11 @@
 - duration_s: 0.20
 - hitches: 2 above 50 ms
 - render profile: not available
+- note: physical_mb (physical memory used): no column or no values in the capture; omitted
+- note: streaming_pool_mb (texture streaming pool): no column or no values in the capture; omitted
+
+| channel | unit | mean | p50 | p95 | p99 |
+|---|---|---|---|---|---|
+| game_ms | ms | 13.18 | 6.40 | 41.00 | 41.00 |
+| render_ms | ms | 10.38 | 5.40 | 31.00 | 31.00 |
+| gpu_ms | ms | 17.78 | 8.40 | 56.00 | 56.00 |

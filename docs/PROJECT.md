@@ -8,20 +8,22 @@ Provide a dependency-free Python library that lets an agent measure an Unreal En
 
 - In scope: the pure core (CSV parsing, frame statistics, budgets, comparison, build size, Markdown rendering) and the thin adapter that starts and reads captures through the `unreal` module passed by the caller.
 - In scope: the public API listed in [README.md](../README.md), typed and tested against a fake `unreal` module.
+- In scope since 0.2.0: the Unreal plugin (`.uplugin`, `ToolsetDefinition` shell), the `mcp` layer, the plugin build tool and the in-editor smoke test.
 
 ## Out of scope
 
 - Unreal Insights traces.
 - Per-draw-call analysis.
 - Automatic optimization of the project.
-- Packaging as an Unreal plugin, the `ToolsetDefinition` class, and the editor smoke test. These are planned for a supervised session.
 - Real anonymized captures from the editor. Only synthetic fixtures are committed.
 
 ## Timeline
 
 | Date | Event |
 |---|---|
-| 2026 | Repository created from the factory utility template. |
+| 2026-11-08 | Repository created from the factory utility template; factory run (core + adapter). |
+| 2026-11-08 | Interactive session (Claude Code): plugin shell, `mcp` layer, build tool, smoke test, skill, docs (0.2.0). Not yet verified inside Unreal. |
+| pending | In-editor verification on UE 5.8 (`docs/TESTING.md`): date, engine version, smoke result, `stat unit` comparison. |
 
 ## Effort metrics
 

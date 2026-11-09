@@ -10,7 +10,27 @@ Pure core and Unreal adapter of an Unreal MCP toolset that records CSV Profiler 
 
 Agents optimizing an Unreal Engine 5.8 game need repeatable performance measurements with a clear PASS/FAIL against a budget and a comparison with the previous run. Reading CSV Profiler output and `stat unit` by hand is slow and inconsistent. This package parses CSV Profiler captures, computes frame statistics, evaluates budgets, compares two captures with a seeded bootstrap and reports build size.
 
-## Install
+## Install in Unreal Engine (the MCP toolset)
+
+1. Build the plugin: `uv run python tools/build_plugin.py` (or download the zip from a release). It
+   creates `dist/PerfProbeToolset-<version>.zip`.
+2. Unzip it into `<YourProject>/Plugins/` (you get `Plugins/PerfProbeToolset/`).
+3. In the editor enable **Unreal MCP**, **All Toolsets** and **Perf Probe Toolset**, restart, and
+   turn on *Editor Preferences > General > Model Context Protocol > Auto Start Server*.
+4. Run `ModelContextProtocol.GenerateClientConfig ClaudeCode` in the console (writes `.mcp.json`),
+   then start your agent from the project root. If the editor was already running, run
+   `ModelContextProtocol.RefreshTools`.
+5. The agent finds the toolset `PerfProbeTools` through `list_toolsets` and calls it with
+   `call_tool`: `start_capture`, `capture_status`, `get_report`, `compare_reports`,
+   `build_size_report` and `perf_report_md`. See [docs/AGENT_USAGE.md](docs/AGENT_USAGE.md) and the
+   optional Claude Code skill in [skill/SKILL.md](skill/SKILL.md).
+
+Requirements: Unreal Engine 5.8 with the experimental Unreal MCP and Toolset Registry plugins.
+Python only, nothing to compile. Status: the logic, the MCP layer and the plugin shell are tested in
+CI against a fake `unreal` module; they have not yet been verified inside Unreal. The in-editor
+check is `tests/ue_smoke.py` (see [docs/TESTING.md](docs/TESTING.md)).
+
+## Install as a Python library
 
 ```sh
 pip install trysac-ue-perf-probe-toolset
@@ -33,6 +53,8 @@ print(result.verdict, result.reasons)
 
 Inside the Unreal editor Python environment, the adapter functions take the `unreal` module as their first argument, for example `start_capture(unreal, 30)`.
 
+`ue_perf_probe_toolset.mcp` exposes the same six operations with flat, JSON-friendly parameters and a JSON string result (first key `summary`; errors come back as `{"summary": "error: ...", "error": {...}}` instead of raising). The budget is passed as `target_fps`, `min_fps`, `max_hitches_per_min` and `hitch_ms`; `build_size_report` defaults to a 1 GiB limit. The plugin's toolset class forwards to it. Capture jobs are kept in a module-level store, so they survive between calls but are lost if the package is reloaded; the CSV files stay in `Saved/Profiling/CSV/` and can be passed as `csv_path`.
+
 ## Public API
 
 Core (pure, never imports `unreal`):
@@ -42,14 +64,16 @@ Core (pure, never imports `unreal`):
 - `frame_stats(...)` returns `FrameStats`. Raises `no_frames` for an empty input and `invalid_argument` for bad values. `fps_p1_low` and `fps_p5_low` are derived from the 99th and 95th percentile frame time.
 - `PerfBudget(target_fps, min_fps, max_hitches_per_min, max_frame_ms_p95, max_frame_ms_p99)`. `None` disables a limit. `min_fps` is compared with `fps_p1_low`. `PerfBudget.from_mapping` rejects unknown keys.
 - `evaluate_budget(stats, budget)` returns `BudgetResult` with `verdict` (`PASS` or `FAIL`), `checks` and `reasons`.
+- `channel_stats(frames, warmup_seconds=0.0)` returns `(tuple[ChannelStats], notes)`: mean, p50, p95 and p99 of `game_ms`, `render_ms` (draw), `gpu_ms`, `physical_mb` and `streaming_pool_mb` for the columns present; absent ones are named in `notes`.
+- `compare_profiles(baseline, candidate, *, seed=1234, iterations=500)` compares frame times and every shared column with the same seeded bootstrap; the verdict counts time metrics only.
 
 Adapter (each function takes `ue` first and never imports `unreal`):
 
-- `start_capture(ue, duration_seconds=30.0, *, store=None)` runs `csvprofile start` and returns a `CaptureJob` at once. The stop is scheduled by a Slate post-tick callback. Raises `invalid_argument` (duration outside 1 to 3600 seconds) and `capture_in_progress`.
+- `start_capture(ue, duration_seconds=30.0, *, label="", store=None)` runs `csvprofile start` and returns a `CaptureJob` at once. The stop is scheduled by a Slate post-tick callback. Raises `invalid_argument` (duration outside 1 to 3600 seconds, label not a string) and `capture_in_progress`. The label goes through `sanitize_label` (at most 64 safe characters) and is shown in reports.
 - `capture_status(ue, job_id)` returns the job state `running`, `finalizing` or `completed`. Raises `unknown_job`.
-- `get_report(ue, job_id=None, csv_path=None, *, budget=None, warmup_seconds=0.0, hitch_threshold_ms=..., store=None)` returns `PerfReport`.
+- `get_report(ue, job_id=None, csv_path=None, *, budget=None, warmup_seconds=0.0, hitch_threshold_ms=..., store=None)` returns `PerfReport` with frame `stats`, `channels`, `notes`, `label` and the budget verdict.
 - `perf_report_md(...)` returns the same report rendered as Markdown.
-- `compare_reports(ue, baseline_csv, candidate_csv, *, seed=1234, iterations=500, warmup_seconds=0.0)` returns `ComparisonResult`. The same seed gives the same result.
+- `compare_reports(ue, baseline_csv, candidate_csv, *, seed=1234, iterations=500, warmup_seconds=0.0)` returns `ComparisonResult` covering frame time and every shared column. The same seed gives the same result.
 - `build_size_report(ue, build_dir, *, limit_bytes=None, cook_log=None)` returns a read-only `SizeReport`. Its `estimated_zip_bytes` is an estimate from fixed per-extension ratios, not a measured archive size.
 - `to_dict(result)` converts any result dataclass to plain values.
 - `JobStore(max_entries=64)` holds capture jobs in memory and evicts the oldest one beyond the limit.
@@ -69,6 +93,7 @@ Security limits are described in [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Documentation
 
+- [Agent usage](docs/AGENT_USAGE.md) and [skill](skill/SKILL.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md) and [security notes](docs/SECURITY.md)
 - [Project record](docs/PROJECT.md) and [stack](docs/STACK.md)

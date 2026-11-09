@@ -11,6 +11,7 @@ import contextlib
 import dataclasses
 import json
 import math
+import re
 import threading
 from collections import OrderedDict
 from collections.abc import Mapping
@@ -20,17 +21,20 @@ from typing import Any
 
 from .core import sizes as core_sizes
 from .core.budget import PerfBudget
-from .core.compare import ComparisonResult, compare_samples
+from .core.channels import channel_samples
+from .core.compare import ComparisonResult, compare_profiles
 from .core.csvparse import parse_csv_profile
 from .core.markdown import render_perf_markdown
 from .core.report import PerfReport, build_report
-from .core.stats import DEFAULT_HITCH_THRESHOLD_MS, apply_warmup
+from .core.stats import DEFAULT_HITCH_THRESHOLD_MS
 from .errors import PerfError
 
 DEFAULT_MAX_JOBS = 64
 MAX_CAPTURE_SECONDS = 3600.0
 MAX_PROFILE_FILE_BYTES = 65536
 MAX_PROFILE_NAME = 100
+MAX_LABEL = 64
+_LABEL_UNSAFE = re.compile(r"[^A-Za-z0-9 _.:#()/-]")
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ class CaptureJob:
     duration_seconds: float
     csv_name: str | None
     summary: str
+    label: str = ""
 
 
 @dataclass
@@ -52,6 +57,7 @@ class _Job:
     state: str = "running"
     elapsed: float = 0.0
     csv_name: str | None = None
+    label: str = ""
 
 
 class JobStore:
@@ -65,11 +71,11 @@ class JobStore:
         self._counter = 0
         self._lock = threading.Lock()
 
-    def create(self, duration_seconds: float, csv_before: frozenset[str]) -> _Job:
+    def create(self, duration_seconds: float, csv_before: frozenset[str], label: str = "") -> _Job:
         """Register a new running job and return it."""
         with self._lock:
             self._counter += 1
-            job = _Job(f"capture-{self._counter:04d}", duration_seconds, csv_before)
+            job = _Job(f"capture-{self._counter:04d}", duration_seconds, csv_before, label=label)
             self._jobs[job.job_id] = job
             while len(self._jobs) > self._max:
                 self._jobs.popitem(last=False)
@@ -82,6 +88,14 @@ class JobStore:
         if job is None:
             raise PerfError("unknown_job", f"unknown job id: {str(job_id)[:60]!r}")
         return job
+
+    def label_for(self, csv_name: str) -> str:
+        """Label of the newest known job whose capture produced ``csv_name`` ("" if none)."""
+        with self._lock:
+            for job in reversed(self._jobs.values()):
+                if job.csv_name == csv_name:
+                    return job.label
+        return ""
 
     def has_running(self) -> bool:
         """Whether a capture is still running."""
@@ -161,6 +175,20 @@ def _render_profile(ue: Any) -> str | None:
     return name[:MAX_PROFILE_NAME]
 
 
+def sanitize_label(label: str) -> str:
+    """Make a capture label safe to show: allowed characters only, one line, at most 64 chars.
+
+    Letters, digits, space and ``_ . : # ( ) / -`` are kept; any other character becomes ``_``.
+
+    Raises:
+        PerfError: ``invalid_argument`` when ``label`` is not a string.
+    """
+    if not isinstance(label, str):
+        raise PerfError("invalid_argument", "label must be a string")
+    collapsed = " ".join(label.split())
+    return _LABEL_UNSAFE.sub("_", collapsed)[:MAX_LABEL].strip()
+
+
 def _notes(ue: Any) -> tuple[str, ...]:
     name = _render_profile(ue)
     return (f"render profile: {name}",) if name else ()
@@ -170,11 +198,14 @@ def start_capture(
     ue: Any,
     duration_seconds: float = 30.0,
     *,
+    label: str = "",
     store: JobStore | None = None,
 ) -> CaptureJob:
     """Start ``csvprofile start`` and schedule the stop on an editor tick callback.
 
-    Returns immediately with a job id; use ``capture_status`` to follow it.
+    Returns immediately with a job id; use ``capture_status`` to follow it. ``label`` is
+    sanitized (see ``sanitize_label``), kept with the job and shown in its reports; it never
+    reaches the console.
 
     Raises:
         PerfError: ``invalid_argument`` for a duration outside 1..3600 seconds,
@@ -190,10 +221,11 @@ def start_capture(
         raise PerfError(
             "invalid_argument", f"duration_seconds must be between 1 and {MAX_CAPTURE_SECONDS:g}"
         )
+    clean_label = sanitize_label(label)
     if active.has_running():
         raise PerfError("capture_in_progress", "another capture is still running")
     before = frozenset(name for _, name in _csv_files(_csv_dir(ue)))
-    job = active.create(float(duration_seconds), before)
+    job = active.create(float(duration_seconds), before, clean_label)
     try:
         _exec(ue, "csvprofile start")
     except Exception as exc:
@@ -220,8 +252,14 @@ def start_capture(
         with contextlib.suppress(Exception):
             _exec(ue, "csvprofile stop")
         raise PerfError("capture_failed", "could not schedule capture stop") from exc
+    suffix = f" ({clean_label})" if clean_label else ""
     return CaptureJob(
-        job.job_id, "running", job.duration_seconds, None, f"capture {job.job_id} started"
+        job.job_id,
+        "running",
+        job.duration_seconds,
+        None,
+        f"capture {job.job_id}{suffix} started",
+        clean_label,
     )
 
 
@@ -239,8 +277,13 @@ def capture_status(ue: Any, job_id: str, *, store: JobStore | None = None) -> Ca
             job.state = "completed"
             job.csv_name = found
     state = "finalizing" if job.state == "stopped" else job.state
-    summary = f"capture {job.job_id} is {state}"
-    return CaptureJob(job.job_id, state, job.duration_seconds, job.csv_name, summary)
+    suffix = f" ({job.label})" if job.label else ""
+    summary = f"capture {job.job_id}{suffix} is {state}"
+    return CaptureJob(job.job_id, state, job.duration_seconds, job.csv_name, summary, job.label)
+
+
+def _label_of(path: Path, store: JobStore | None) -> str:
+    return (DEFAULT_STORE if store is None else store).label_for(path.name)
 
 
 def _resolve_csv(ue: Any, job_id: str | None, csv_path: str | None, store: JobStore | None) -> Path:
@@ -271,7 +314,8 @@ def get_report(
     """Build the report of a capture.
 
     The CSV is chosen by ``csv_path`` (a name or path inside ``Saved/Profiling/CSV``), else by
-    ``job_id``, else the newest CSV in that folder.
+    ``job_id``, else the newest CSV in that folder. The label of the job that produced the CSV
+    is attached when that job is still known.
 
     Raises:
         PerfError: ``path_not_allowed``, ``csv_not_found``, ``csv_unreadable``,
@@ -290,13 +334,12 @@ def get_report(
         hitch_threshold_ms=hitch_threshold_ms,
         budget=checked,
         render_profile=_render_profile(ue),
+        label=_label_of(path, store),
     )
 
 
-def _samples(path: Path, warmup_seconds: float) -> list[float]:
-    parsed = parse_csv_profile(path)
-    kept, _ = apply_warmup([frame.frame_ms for frame in parsed.frames], warmup_seconds)
-    return kept
+def _samples(path: Path, warmup_seconds: float) -> dict[str, list[float]]:
+    return channel_samples(parse_csv_profile(path).frames, warmup_seconds)
 
 
 def compare_reports(
@@ -307,18 +350,32 @@ def compare_reports(
     seed: int = 1234,
     iterations: int = 500,
     warmup_seconds: float = 0.0,
+    store: JobStore | None = None,
 ) -> ComparisonResult:
     """Compare two captures with a seeded bootstrap (same seed, same result).
+
+    Frame time and every game/render (draw)/GPU/memory column present in both captures are
+    compared (see ``compare_profiles``); labels of known jobs are added to ``notes``.
 
     Raises:
         PerfError: ``path_not_allowed``, ``csv_not_found``, ``csv_unreadable``,
             ``invalid_argument`` or ``no_frames``.
     """
     csv_dir = _csv_dir(ue)
-    baseline = _samples(_confine(csv_dir, baseline_csv, ".csv"), warmup_seconds)
-    candidate = _samples(_confine(csv_dir, candidate_csv, ".csv"), warmup_seconds)
-    result = compare_samples(baseline, candidate, seed=seed, iterations=iterations)
-    return dataclasses.replace(result, notes=_notes(ue))
+    base_path = _confine(csv_dir, baseline_csv, ".csv")
+    cand_path = _confine(csv_dir, candidate_csv, ".csv")
+    baseline = _samples(base_path, warmup_seconds)
+    candidate = _samples(cand_path, warmup_seconds)
+    result = compare_profiles(baseline, candidate, seed=seed, iterations=iterations)
+    labels = tuple(
+        f"{role} label: {label}"
+        for role, label in (
+            ("baseline", _label_of(base_path, store)),
+            ("candidate", _label_of(cand_path, store)),
+        )
+        if label
+    )
+    return dataclasses.replace(result, notes=(*result.notes, *labels, *_notes(ue)))
 
 
 def build_size_report(

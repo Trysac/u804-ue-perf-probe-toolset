@@ -225,7 +225,13 @@ def test_compare_reports_is_reproducible(fake_ue, write_csv):
     second = compare_reports(fake_ue, "base.csv", "cand.csv", seed=1234, iterations=50)
     assert first == second
     assert first.verdict == "regression"
-    assert first.notes == ("render profile: Epic",)
+    assert first.notes[-1] == "render profile: Epic"
+    assert {m.metric.rsplit("_", 1)[0] for m in first.metrics} == {
+        "frame_ms",
+        "game_ms",
+        "render_ms",
+        "gpu_ms",
+    }
     assert first.baseline_count == 30
 
 
@@ -234,7 +240,10 @@ def test_compare_reports_warmup_and_errors(fake_ue, write_csv):
     write_csv(fake_ue.csv_dir, "cand.csv", [10.0] * 150)
     result = compare_reports(fake_ue, "base.csv", "cand.csv", iterations=20, warmup_seconds=1)
     assert result.baseline_count == 50
-    assert result.notes == ()
+    assert result.notes == (
+        "physical_mb: not present in both captures; not compared",
+        "streaming_pool_mb: not present in both captures; not compared",
+    )
     with pytest.raises(PerfError) as outside:
         compare_reports(fake_ue, "base.csv", "../../x.csv")
     assert _code(outside) == "path_not_allowed"
@@ -277,3 +286,31 @@ def test_build_size_report_refuses_outside_paths(fake_ue, tmp_path):
     with pytest.raises(PerfError) as missing:
         build_size_report(fake_ue, "Saved/NoSuchFolder")
     assert _code(missing) == "path_not_found"
+
+
+def test_label_is_sanitized_kept_and_reported(fake_ue, store, write_csv):
+    job = start_capture(fake_ue, 5, label="  before\nLOD <fix>; " + "x" * 100, store=store)
+    assert job.label.startswith("before LOD _fix__ ")
+    assert len(job.label) <= 64
+    assert job.label in job.summary
+    assert fake_ue.commands == ["csvprofile start"]
+    fake_ue.tick(5.0)
+    write_csv(fake_ue.csv_dir, "run.csv", [10.0] * 10)
+    assert capture_status(fake_ue, job.job_id, store=store).label == job.label
+    assert get_report(fake_ue, job_id=job.job_id, store=store).label == job.label
+    assert get_report(fake_ue, csv_path="run.csv", store=store).label == job.label
+    md = perf_report_md(fake_ue, csv_path="run.csv", store=store)
+    assert f"- label: {job.label}" in md
+    write_csv(fake_ue.csv_dir, "other.csv", [10.0] * 10)
+    assert get_report(fake_ue, csv_path="other.csv", store=store).label is None
+    result = compare_reports(fake_ue, "other.csv", "run.csv", iterations=10, store=store)
+    assert f"candidate label: {job.label}" in result.notes
+    assert not any(note.startswith("baseline label") for note in result.notes)
+
+
+@pytest.mark.parametrize("label", [5, None, b"x"])
+def test_label_must_be_a_string(fake_ue, store, label):
+    with pytest.raises(PerfError) as info:
+        start_capture(fake_ue, 5, label=label, store=store)
+    assert _code(info) == "invalid_argument"
+    assert fake_ue.commands == []

@@ -16,7 +16,7 @@ DATA = Path(__file__).parent / "data"
 
 
 def test_version_and_exports():
-    assert pkg.__version__ == "0.1.0"
+    assert pkg.__version__ == "0.2.0"
     for name in pkg.__all__:
         assert hasattr(pkg, name)
 

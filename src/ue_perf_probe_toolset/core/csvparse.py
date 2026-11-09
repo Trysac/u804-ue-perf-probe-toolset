@@ -23,8 +23,13 @@ COLUMN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("game_ms", re.compile(r"^(gamethreadtime|gamethread)(ms)?$")),
     ("render_ms", re.compile(r"^(renderthreadtime|renderthread)(ms)?$")),
     ("gpu_ms", re.compile(r"^(gputime|gpu)(ms)?$")),
+    ("physical_mb", re.compile(r"^(memory)?physicalused(mb)?$")),
+    ("streaming_pool_mb", re.compile(r"^(texturestreaming)?(streamingpool|texturepool)(mb)?$")),
 )
 _OPTIONAL_FIELDS = ("game_ms", "render_ms", "gpu_ms")
+# Memory and streaming columns are often absent; their absence is not a parser warning.
+_MEMORY_FIELDS = ("physical_mb", "streaming_pool_mb")
+_MAX_LISTED_EXTRA = 10
 _NON_ALNUM = re.compile(r"[^a-z0-9]")
 
 
@@ -39,7 +44,11 @@ class ParseWarning:
 
 @dataclass(frozen=True)
 class Frame:
-    """One captured frame. Times are in milliseconds; ``start_ms`` is the cumulative offset."""
+    """One captured frame. Times are in milliseconds; ``start_ms`` is the cumulative offset.
+
+    ``physical_mb`` (physical memory used) and ``streaming_pool_mb`` (texture streaming pool) are
+    in megabytes and ``None`` when the capture has no such column.
+    """
 
     index: int
     start_ms: float
@@ -47,6 +56,8 @@ class Frame:
     game_ms: float | None
     render_ms: float | None
     gpu_ms: float | None
+    physical_mb: float | None = None
+    streaming_pool_mb: float | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +141,9 @@ def parse_csv_text(
 
     The first non-blank row is the header; rows starting with ``[`` (profiler metadata) and
     blank rows are skipped. Problems (missing, extra or duplicate columns, truncated or
-    malformed rows, bad numbers) produce one warning each and never abort parsing.
+    malformed rows, bad numbers) produce one warning each and never abort parsing; all
+    unrecognized columns together produce a single ``extra_column`` warning. A row identical to
+    the header (the profiler can repeat it at the end of the file) is skipped silently.
 
     Raises:
         PerfError: ``limit_exceeded`` above the size or row limits, ``csv_unreadable`` when
@@ -154,17 +167,25 @@ def parse_csv_text(
     header_line, raw_header = rows[0]
     header = [cell.strip() for cell in raw_header]
     mapping: dict[str, int] = {}
+    extra: list[str] = []
     for position, name in enumerate(header):
         field = _field_for(name)
         if field is None:
-            sink.add("extra_column", f"unrecognized column {_clip(name)!r} ignored", header_line)
+            extra.append(_clip(name))
         elif field in mapping:
             sink.add("duplicate_column", f"duplicate column {_clip(name)!r} ignored", header_line)
         else:
             mapping[field] = position
+    if extra:
+        listed = ", ".join(repr(name) for name in extra[:_MAX_LISTED_EXTRA])
+        more = (
+            f" and {len(extra) - _MAX_LISTED_EXTRA} more" if len(extra) > _MAX_LISTED_EXTRA else ""
+        )
+        noun = "column" if len(extra) == 1 else "columns"
+        sink.add("extra_column", f"unrecognized {noun} {listed}{more} ignored", header_line)
     if "frame_ms" not in mapping:
         raise PerfError("csv_unreadable", "no frame time column found")
-    present = [field for field in _OPTIONAL_FIELDS if field in mapping]
+    present = [field for field in (*_OPTIONAL_FIELDS, *_MEMORY_FIELDS) if field in mapping]
     for field in _OPTIONAL_FIELDS:
         if field not in mapping:
             sink.add("missing_column", f"no column found for {field}; values unavailable")
@@ -173,6 +194,8 @@ def parse_csv_text(
     frames: list[Frame] = []
     clock = 0.0
     for position, (line, row) in enumerate(data):
+        if [cell.strip() for cell in row] == header:
+            continue
         if len(row) != len(header):
             truncated = len(row) < len(header) and position == len(data) - 1
             code = "truncated_row" if truncated else "malformed_row"
@@ -199,6 +222,8 @@ def parse_csv_text(
                 game_ms=optional.get("game_ms"),
                 render_ms=optional.get("render_ms"),
                 gpu_ms=optional.get("gpu_ms"),
+                physical_mb=optional.get("physical_mb"),
+                streaming_pool_mb=optional.get("streaming_pool_mb"),
             )
         )
         clock += frame_ms

@@ -6,6 +6,7 @@ __all__ = ["ERROR_CODES", "PerfError"]
 
 ERROR_CODES: frozenset[str] = frozenset(
     {
+        "capture_failed",
         "capture_in_progress",
         "csv_not_found",
         "csv_unreadable",

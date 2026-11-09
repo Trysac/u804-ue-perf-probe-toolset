@@ -1,6 +1,6 @@
 [project]
 name = "trysac-ue-perf-probe-toolset"
-version = "0.1.0"  # static: generated code may rewrite __init__.py (L35)
+version = "0.2.0"  # static: generated code may rewrite __init__.py (L35)
 description = "Pure core and unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size."
 readme = "README.md"
 requires-python = ">=3.10"

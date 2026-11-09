@@ -44,11 +44,22 @@ def render_perf_markdown(report: PerfReport) -> str:
             f"**Verdict: {overall}**",
             "",
             f"- source: {_clean(report.source)}",
+            *([f"- label: {_clean(report.label)}"] if report.label else []),
             f"- frames: {stats.frame_count} ({stats.excluded_frames} excluded as warmup)",
             f"- duration_s: {stats.duration_s:.2f}",
             f"- hitches: {stats.hitch_count} above {stats.hitch_threshold_ms:g} ms",
             f"- render profile: {profile}",
         ]
     )
+    lines.extend(f"- note: {_clean(note)}" for note in report.notes)
     lines.extend(f"- warning: {_clean(warning)}" for warning in report.warnings)
+    if report.channels:
+        lines.extend(
+            ["", "| channel | unit | mean | p50 | p95 | p99 |", "|---|---|---|---|---|---|"]
+        )
+        lines.extend(
+            f"| {item.channel} | {item.unit} | {item.mean:.2f} | {item.p50:.2f} | "
+            f"{item.p95:.2f} | {item.p99:.2f} |"
+            for item in report.channels
+        )
     return "\n".join(lines) + "\n"
