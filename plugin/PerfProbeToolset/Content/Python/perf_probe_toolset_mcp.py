@@ -23,8 +23,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
     table for a dev log, and check the size of a packaged build against a limit.
     """
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def start_capture(duration_seconds: float = 30.0, label: str = "") -> str:
         """Start a CSV Profiler capture that stops by itself after duration_seconds.
 
@@ -40,8 +40,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
         """
         return mcp.start_capture(unreal, duration_seconds, label)
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def capture_status(job_id: str) -> str:
         """Report the state of a capture started with start_capture.
 
@@ -54,8 +54,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
         """
         return mcp.capture_status(unreal, job_id)
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def get_report(
         job_id: str = "",
         csv_path: str = "",
@@ -94,8 +94,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
             warmup_seconds,
         )
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def compare_reports(
         baseline_csv: str,
         candidate_csv: str,
@@ -121,8 +121,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
             unreal, baseline_csv, candidate_csv, seed, iterations, warmup_seconds
         )
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def build_size_report(build_dir: str, limit_bytes: int = 1073741824, cook_log: str = "") -> str:
         """Size of a packaged build folder under the project directory (read-only).
 
@@ -137,8 +137,8 @@ class PerfProbeTools(unreal.ToolsetDefinition):
         """
         return mcp.build_size_report(unreal, build_dir, limit_bytes, cook_log)
 
-    @staticmethod
     @toolset_registry.tool_call
+    @staticmethod
     def perf_report_md(
         job_id: str = "",
         csv_path: str = "",
