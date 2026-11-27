@@ -1,7 +1,6 @@
 # ue-perf-probe-toolset
 
-[![PyPI version](https://img.shields.io/pypi/v/trysac-ue-perf-probe-toolset)](https://pypi.org/project/trysac-ue-perf-probe-toolset/)
-[![License: MIT](https://img.shields.io/pypi/l/trysac-ue-perf-probe-toolset)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/Trysac/u804-ue-perf-probe-toolset/actions/workflows/ci.yml/badge.svg)](https://github.com/Trysac/u804-ue-perf-probe-toolset/actions/workflows/ci.yml)
 
 Pure core and Unreal adapter of an Unreal MCP toolset that records CSV Profiler captures, computes frame statistics against budgets and reports build size.
